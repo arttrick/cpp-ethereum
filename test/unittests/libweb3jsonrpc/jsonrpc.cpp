@@ -29,6 +29,7 @@
 #include <libweb3jsonrpc/Eth.h>
 #include <libweb3jsonrpc/ModularServer.h>
 #include <libweb3jsonrpc/Net.h>
+#include <libweb3jsonrpc/Test.h>
 #include <libweb3jsonrpc/Web3.h>
 #include <libwebthree/WebThree.h>
 #include <test/tools/libtesteth/TestHelper.h>
@@ -83,14 +84,15 @@ struct JsonRpcFixture : public TestOutputHelperFixture
         // TODO: better make it use ethemeral in-memory databases
         chainParams.extraData = h256::random().asBytes();
         web3.reset(new WebThreeDirect(
-            "eth tests", "", "", chainParams, WithExisting::Kill, {"eth"}, nprefs));
+            "eth tests", "", "", chainParams, WithExisting::Kill, {"eth"}, nprefs, bytesConstRef(), true));
 
         web3->setIdealPeerCount(5);
 
+        dev::KeyPair coinbase = KeyPair::create();
         web3->ethereum()->setAuthor(coinbase.address());
 
         using FullServer = ModularServer<rpc::EthFace, rpc::NetFace, rpc::Web3Face,
-            rpc::AdminEthFace, rpc::AdminNetFace, rpc::DebugFace>;
+            rpc::AdminEthFace, rpc::AdminNetFace, rpc::DebugFace, rpc::TestFace>;
 
         accountHolder.reset(new FixedAccountHolder([&]() { return web3->ethereum(); }, {}));
         accountHolder->setAccounts({coinbase});
@@ -105,7 +107,8 @@ struct JsonRpcFixture : public TestOutputHelperFixture
         rpcServer.reset(
             new FullServer(ethFace, new rpc::Net(*web3), new rpc::Web3(web3->clientVersion()),
                 new rpc::AdminEth(*web3->ethereum(), *gasPricer, keyManager, *sessionManager.get()),
-                new rpc::AdminNet(*web3, *sessionManager), new rpc::Debug(*web3->ethereum())));
+                new rpc::AdminNet(*web3, *sessionManager), new rpc::Debug(*web3->ethereum()),
+		new rpc::Test(*web3->ethereum())));
         auto ipcServer = new TestIpcServer;
         rpcServer->addConnector(ipcServer);
         ipcServer->StartListening();
@@ -273,6 +276,10 @@ BOOST_AUTO_TEST_CASE(eth_sendTransaction)
 
 BOOST_AUTO_TEST_CASE(simple_contract)
 {
+    KeyPair kp = KeyPair::create();
+    web3->ethereum()->setAuthor(kp.address());
+    accountHolder->setAccounts({kp});
+
     dev::eth::mine(*(web3->ethereum()), 1);
 
 
